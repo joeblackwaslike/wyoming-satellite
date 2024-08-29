@@ -3,7 +3,7 @@
 # Installs drivers for the ReSpeaker 2mic and 4mic HATs on Raspberry Pi OS.
 # Must be run with sudo.
 # Requires: curl raspberrypi-kernel-headers dkms i2c-tools libasound2-plugins alsa-utils
-
+set -x
 set -eo pipefail
 
 kernel_formatted="$(uname -r | cut -f1,2 -d.)"
@@ -14,17 +14,12 @@ echo "Could not find driver for kernel $kernel_formatted"
 exit 1
 fi
 
-apt-get update
-apt-get install --no-install-recommends --yes \
-    curl raspberrypi-kernel-headers dkms i2c-tools libasound2-plugins alsa-utils
+# apt-get update
+# apt-get install --no-install-recommends --yes \
+#    curl linux-headers-$(uname -r) dkms i2c-tools libasound2-plugins alsa-utils
 
-temp_dir="$(mktemp -d)"
-
-function finish {
-   rm -rf "${temp_dir}"
-}
-
-trap finish EXIT
+temp_dir="tmp"
+mkdir -p $temp_dir
 
 pushd "${temp_dir}"
 
@@ -53,7 +48,7 @@ fi
 mkdir -p "/usr/src/${mod}-${ver}"
 cp -a "${src}"/* "/usr/src/${mod}-${ver}/"
 
-dkms add -m "${mod}" -v "${ver}"
+dkms add -m "${mod}" -v "${ver}" --force | true
 dkms build -k "${kernel}" -m "${mod}" -v "${ver}" -j "${threads}" && {
     dkms install --force -k "${kernel}" -m "${mod}" -v "${ver}"
 }
@@ -62,9 +57,9 @@ mkdir -p "/var/lib/dkms/${mod}/${ver}/${marker}"
 
 # 2. Install kernel module and configure
 echo 'Updating boot configuration'
-config='/boot/config.txt'
+config='/boot/firmware/config.txt'
 
-cp seeed-*-voicecard.dtbo /boot/overlays
+cp seeed-*-voicecard.dtbo /boot/firmware/overlays
 grep -q "^snd-soc-ac108$" /etc/modules || echo "snd-soc-ac108" >> /etc/modules
 sed -i -e 's:#dtparam=i2c_arm=on:dtparam=i2c_arm=on:g' "${config}"
 echo "dtoverlay=i2s-mmap" >> "${config}"
@@ -77,3 +72,4 @@ systemctl enable --now seeed-voicecard.service
 
 echo 'Done. Please reboot the system.'
 popd
+rm -rf "${temp_dir}"
